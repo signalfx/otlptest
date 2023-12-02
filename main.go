@@ -125,6 +125,52 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 	}()
 	start.Wait()
 
+	// simple gauge
+	go func() {
+		wg.Add(1)
+		for keepRunning.Load() {
+			time.Sleep(1 * time.Second)
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			g := metric.SetEmptyGauge()
+			g.DataPoints().AppendEmpty().SetIntValue(1)
+			metric.SetName(fmt.Sprintf("%s.gauge.check", prefix))
+
+			err := exporter.ConsumeMetrics(context.Background(), metrics)
+			if err != nil {
+				logger.Error("Error sending gauge check", zap.Error(err))
+			}
+		}
+		wg.Done()
+	}()
+
+	// working histogram
+	go func() {
+		wg.Add(1)
+		for keepRunning.Load() {
+			time.Sleep(1 * time.Second)
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetMax(1)
+			dp.SetMin(0)
+			dp.SetSum(1)
+			dp.SetCount(1)
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
+			metric.SetName(fmt.Sprintf("%s.histogram.complete", prefix))
+
+			err := exporter.ConsumeMetrics(context.Background(), metrics)
+			if err != nil {
+				logger.Error("Error sending complete histogram", zap.Error(err))
+			}
+		}
+		wg.Done()
+	}()
+
 	// histogram with empty datapoint
 	go func() {
 		wg.Add(1)
@@ -159,7 +205,7 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetCount(2)
 			dp.SetMin(2.0)
 			dp.SetMax(2.0)
-
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			err := exporter.ConsumeMetrics(context.Background(), metrics)
 			if err != nil {
 				logger.Error("Error sending histogram with no buckets", zap.Error(err))
@@ -184,7 +230,7 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetMin(15.0)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2)
-
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			err := exporter.ConsumeMetrics(context.Background(), metrics)
 			if err != nil {
 				logger.Error("Error sending histogram with min > max", zap.Error(err))
@@ -215,7 +261,7 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			err := exporter.ConsumeMetrics(context.Background(), metrics)
 			if err != nil {
 				logger.Error("Error sending histogram with exemplar", zap.Error(err))
@@ -240,7 +286,8 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2)
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
@@ -272,7 +319,8 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2)
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
@@ -291,6 +339,7 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 	// no min histogram
 	go func() {
 		wg.Add(1)
+		i := 0
 		for keepRunning.Load() {
 			time.Sleep(1 * time.Second)
 			metrics := pmetric.NewMetrics()
@@ -302,7 +351,8 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetSum(1)
 			dp.SetCount(2)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2)
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
@@ -313,6 +363,10 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			err := exporter.ConsumeMetrics(context.Background(), metrics)
 			if err != nil {
 				logger.Error("Error sending histogram with no min", zap.Error(err))
+			}
+			i++
+			if (i % 30) == 0 {
+				logger.Error("Sent histograms", zap.Int("count", i))
 			}
 		}
 		wg.Done()
@@ -332,7 +386,8 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetSum(1)
 			dp.SetCount(2)
 			dp.SetMin(2.0)
-			dp.BucketCounts().Append(1, 2)
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
@@ -368,6 +423,7 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 				buckets = append(buckets, uint64(i))
 			}
 			dp.BucketCounts().Append(buckets...)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
@@ -403,6 +459,7 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 				buckets = append(buckets, uint64(i))
 			}
 			dp.BucketCounts().Append(buckets...)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
@@ -434,7 +491,8 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2)
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
@@ -466,7 +524,8 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2)
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			e := dp.Exemplars().AppendEmpty()
 			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
