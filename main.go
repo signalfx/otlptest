@@ -102,10 +102,12 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 	return nil
 }
 
-var testCases = []struct {
+type testRun struct {
 	name          string
 	createMetrics func(prefix string) pmetric.Metrics
-}{
+}
+
+var testCases = []testRun{
 	{
 		name: "empty histogram",
 		createMetrics: func(prefix string) pmetric.Metrics {
@@ -193,80 +195,6 @@ var testCases = []struct {
 		},
 	},
 	{
-		name: "histogram with exemplars",
-		createMetrics: func(prefix string) pmetric.Metrics {
-			metrics := pmetric.NewMetrics()
-			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-			h := metric.SetEmptyHistogram()
-			metric.SetName(fmt.Sprintf("%s.histogram.exemplar", prefix))
-			dp := h.DataPoints().AppendEmpty()
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
-			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			return metrics
-		},
-	},
-	{
-		name: "delta histogram",
-		createMetrics: func(prefix string) pmetric.Metrics {
-			metrics := pmetric.NewMetrics()
-			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-			h := metric.SetEmptyHistogram()
-			h.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
-			metric.SetName(fmt.Sprintf("%s.histogram.delta", prefix))
-			dp := h.DataPoints().AppendEmpty()
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
-			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3)
-			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			return metrics
-		},
-	},
-	{
-		name: "cumulative histogram",
-		createMetrics: func(prefix string) pmetric.Metrics {
-			metrics := pmetric.NewMetrics()
-			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-			h := metric.SetEmptyHistogram()
-			h.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-			metric.SetName(fmt.Sprintf("%s.histogram.cumulative", prefix))
-			dp := h.DataPoints().AppendEmpty()
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
-			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3)
-			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			return metrics
-		},
-	},
-	{
 		name: "no min histogram",
 		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
@@ -280,12 +208,6 @@ var testCases = []struct {
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			return metrics
 		},
 	},
@@ -303,12 +225,6 @@ var testCases = []struct {
 			dp.SetMin(2.0)
 			dp.BucketCounts().Append(1, 2, 3)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			return metrics
 		},
 	},
@@ -331,12 +247,6 @@ var testCases = []struct {
 			}
 			dp.BucketCounts().Append(buckets...)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			return metrics
 		},
 	},
@@ -359,12 +269,6 @@ var testCases = []struct {
 			}
 			dp.BucketCounts().Append(buckets...)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			return metrics
 		},
 	},
@@ -384,12 +288,6 @@ var testCases = []struct {
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			return metrics
 		},
 	},
@@ -409,23 +307,112 @@ var testCases = []struct {
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			e := dp.Exemplars().AppendEmpty()
-			e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-			e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-			e.SetDoubleValue(42.0)
-			e.SetIntValue(42)
-			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+
 			return metrics
+		},
+	},
+}
+
+type testRunModifier struct {
+	name           string
+	createTestRuns func(prefix string, run testRun) ([]testRun, bool)
+}
+
+var modifiers = []testRunModifier{
+	{
+		name: "add histogram type: none, cumulative, delta",
+		createTestRuns: func(prefix string, run testRun) ([]testRun, bool) {
+			if run.createMetrics(prefix).ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Type() != pmetric.MetricTypeHistogram {
+				return nil, false
+			}
+			return []testRun{
+				{
+					name: run.name + " with unspecified type",
+					createMetrics: func(prefix string) pmetric.Metrics {
+						metrics := run.createMetrics(prefix)
+						histogram := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Histogram()
+						histogram.SetAggregationTemporality(pmetric.AggregationTemporalityUnspecified)
+						return metrics
+					},
+				},
+				{
+					name: run.name + " with cumulative type",
+					createMetrics: func(prefix string) pmetric.Metrics {
+						metrics := run.createMetrics(prefix)
+						metric := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+						metric.SetName(metric.Name() + ".cumulative")
+						histogram := metric.Histogram()
+						histogram.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+						return metrics
+					},
+				},
+				{
+					name: run.name + " with delta type",
+					createMetrics: func(prefix string) pmetric.Metrics {
+						metrics := run.createMetrics(prefix)
+						metric := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+						metric.SetName(metric.Name() + ".delta")
+						histogram := metric.Histogram()
+						histogram.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+						return metrics
+					},
+				},
+			}, true
+		},
+	},
+	{
+		name: "with and without exemplars",
+		createTestRuns: func(prefix string, run testRun) ([]testRun, bool) {
+			if run.createMetrics(prefix).ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Type() != pmetric.MetricTypeHistogram {
+				return nil, false
+			}
+			return []testRun{
+				{
+					name: run.name + " with exemplar",
+					createMetrics: func(prefix string) pmetric.Metrics {
+						metrics := run.createMetrics(prefix)
+						metric := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+						metric.SetName(metric.Name() + ".exemplar")
+						histogram := metric.Histogram()
+						dp := histogram.DataPoints().At(0)
+						e := dp.Exemplars().AppendEmpty()
+						e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+						e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
+						e.SetDoubleValue(42.0)
+						e.SetIntValue(42)
+						e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+						return metrics
+					},
+				},
+				{
+					name:          run.name + " without exemplar",
+					createMetrics: run.createMetrics,
+				},
+			}, true
 		},
 	},
 }
 
 func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, keepRunning *atomic.Bool, logger *zap.Logger) {
 	var start sync.WaitGroup
-	start.Add(len(testCases))
+
+	var allTestCases []testRun
+	for _, testCase := range testCases {
+		for _, modifier := range modifiers {
+			testRuns, ok := modifier.createTestRuns(prefix, testCase)
+			if ok {
+				allTestCases = append(allTestCases, testRuns...)
+			} else {
+				allTestCases = append(allTestCases, testCase)
+			}
+		}
+	}
+
+	start.Add(len(allTestCases))
 	counter := 0
 
-	for _, testCase := range testCases {
+	for _, testCase := range allTestCases {
 		go func() {
 			start.Done()
 			wg.Add(1)
@@ -443,7 +430,6 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			}
 			wg.Done()
 		}()
-		start.Wait()
 	}
 	start.Wait()
 }
