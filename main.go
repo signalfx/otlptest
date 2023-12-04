@@ -56,7 +56,7 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 	cfg.Headers = map[string]configopaque.String{
 		"X-SF-Token": configopaque.String(accessToken),
 	}
-	exporter, err := f.CreateMetricsExporter(context.Background(), exporter.CreateSettings{
+	e, err := f.CreateMetricsExporter(context.Background(), exporter.CreateSettings{
 		ID: component.NewID("otlp"),
 		TelemetrySettings: component.TelemetrySettings{
 			Logger:                logger,
@@ -81,12 +81,12 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 		keepRunning.Store(false)
 	}()
 
-	err = exporter.Start(context.Background(), componenttest.NewNopHost())
+	err = e.Start(context.Background(), componenttest.NewNopHost())
 	if err != nil {
 		return err
 	}
 	defer func() {
-		err := exporter.Shutdown(context.Background())
+		err := e.Shutdown(context.Background())
 		if err != nil {
 			logger.Error("error shutting down", zap.Error(err))
 		}
@@ -94,7 +94,7 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	runExports(wg, prefix, exporter, keepRunning, logger)
+	runExports(wg, prefix, e, keepRunning, logger)
 	wg.Done()
 
 	wg.Wait()
@@ -102,53 +102,34 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 	return nil
 }
 
-func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, keepRunning *atomic.Bool, logger *zap.Logger) {
-	var start sync.WaitGroup
-	start.Add(1)
-	// empty histogram
-	go func() {
-		start.Done()
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+var testCases = []struct {
+	name          string
+	createMetrics func(prefix string) pmetric.Metrics
+}{
+	{
+		name: "empty histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			metric.SetEmptyHistogram()
 			metric.SetName(fmt.Sprintf("%s.histogram.empty", prefix))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending empty histogram", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-	start.Wait()
-
-	// simple gauge
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "simple gauge",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			g := metric.SetEmptyGauge()
 			g.DataPoints().AppendEmpty().SetIntValue(1)
 			metric.SetName(fmt.Sprintf("%s.gauge.check", prefix))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending gauge check", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// working histogram
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "working histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -162,39 +143,23 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.BucketCounts().Append(1, 2, 3)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			metric.SetName(fmt.Sprintf("%s.histogram.complete", prefix))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending complete histogram", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// histogram with empty datapoint
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "histogram with empty data point",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
 			h.DataPoints().AppendEmpty()
 			metric.SetName(fmt.Sprintf("%s.histogram.dp.empty", prefix))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending empty histogram", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// histogram with no buckets
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "histogram with no buckets",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -206,19 +171,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetMin(2.0)
 			dp.SetMax(2.0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with no buckets", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// histogram with min > max
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "histogram with min > max",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -231,19 +189,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with min > max", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// histogram with exemplars
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "histogram with exemplars",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -262,19 +213,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with exemplar", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// delta histogram
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "delta histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -294,20 +238,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with delta aggregation temporality", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// cumulative histogram
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "cumulative histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -327,21 +263,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with cumulative aggregation temporality", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// no min histogram
-	go func() {
-		wg.Add(1)
-		i := 0
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "no min histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -359,24 +286,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with no min", zap.Error(err))
-			}
-			i++
-			if (i % 30) == 0 {
-				logger.Error("Sent histograms", zap.Int("count", i))
-			}
-		}
-		wg.Done()
-	}()
-
-	// no max histogram
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "no max histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -394,20 +309,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with no max", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// 33 buckets
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "33 buckets",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -430,24 +337,16 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with 33 buckets", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// 64 buckets
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "64 buckets",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
-			metric.SetName(fmt.Sprintf("%s.histogram.64buckets", prefix))
+			metric.SetName(fmt.Sprintf("%s.histogram.33buckets", prefix))
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetSum(1)
@@ -466,20 +365,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with 64 buckets", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// histogram with start timestamp older than end timestamp
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "start timestamp older than timestamp",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -499,20 +390,12 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with start timestamp older than end timestamp", zap.Error(err))
-			}
-		}
-		wg.Done()
-	}()
-
-	// histogram with attribute name longer than 255 characters
-	go func() {
-		wg.Add(1)
-		for keepRunning.Load() {
-			time.Sleep(1 * time.Second)
+			return metrics
+		},
+	},
+	{
+		name: "histogram with attribute name longer than 255 characters",
+		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
@@ -532,12 +415,35 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 			e.SetDoubleValue(42.0)
 			e.SetIntValue(42)
 			e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			return metrics
+		},
+	},
+}
 
-			err := exporter.ConsumeMetrics(context.Background(), metrics)
-			if err != nil {
-				logger.Error("Error sending histogram with attribute key longer than 255 characters", zap.Error(err))
+func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, keepRunning *atomic.Bool, logger *zap.Logger) {
+	var start sync.WaitGroup
+	start.Add(len(testCases))
+	counter := 0
+
+	for _, testCase := range testCases {
+		go func() {
+			start.Done()
+			wg.Add(1)
+			for keepRunning.Load() {
+				time.Sleep(1 * time.Second)
+				err := exporter.ConsumeMetrics(context.Background(), testCase.createMetrics(prefix))
+				if err != nil {
+					logger.Error("Error sending metrics", zap.String("testCase", testCase.name), zap.Error(err))
+				} else {
+					counter++
+					if counter%100 == 0 {
+						logger.Info("Histograms sent", zap.Int("count", counter))
+					}
+				}
 			}
-		}
-		wg.Done()
-	}()
+			wg.Done()
+		}()
+		start.Wait()
+	}
+	start.Wait()
 }
