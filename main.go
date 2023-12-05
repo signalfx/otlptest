@@ -154,7 +154,8 @@ var testCases = []testRun{
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
-			h.DataPoints().AppendEmpty()
+			dp := h.DataPoints().AppendEmpty()
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			metric.SetName(fmt.Sprintf("%s.histogram.dp.empty", prefix))
 			return metrics
 		},
@@ -364,7 +365,8 @@ var modifiers = []testRunModifier{
 	{
 		name: "with and without exemplars",
 		createTestRuns: func(prefix string, run testRun) ([]testRun, bool) {
-			if run.createMetrics(prefix).ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Type() != pmetric.MetricTypeHistogram {
+			metric := run.createMetrics(prefix).ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+			if metric.Type() != pmetric.MetricTypeHistogram || metric.Histogram().DataPoints().Len() == 0 {
 				return nil, false
 			}
 			return []testRun{
@@ -409,15 +411,19 @@ func runExports(wg *sync.WaitGroup, prefix string, exporter exporter.Metrics, ke
 		}
 	}
 
+	logger.Info("Starting test cases", zap.Int("count", len(allTestCases)))
 	start.Add(len(allTestCases))
 	counter := 0
 
 	for _, testCase := range allTestCases {
+		testCase := testCase
 		go func() {
+			logger.Info("Starting test case", zap.String("name", testCase.name))
 			start.Done()
 			wg.Add(1)
 			for keepRunning.Load() {
 				time.Sleep(1 * time.Second)
+
 				err := exporter.ConsumeMetrics(context.Background(), testCase.createMetrics(prefix))
 				if err != nil {
 					logger.Error("Error sending metrics", zap.String("testCase", testCase.name), zap.Error(err))
