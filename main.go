@@ -19,6 +19,8 @@ import (
 	"go.opentelemetry.io/collector/exporter/otlphttpexporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/processor"
+	"go.opentelemetry.io/collector/processor/batchprocessor"
 	mnoop "go.opentelemetry.io/otel/metric/noop"
 	tnoop "go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
@@ -49,6 +51,15 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 	if err != nil {
 		return err
 	}
+	telemetrySettings := component.TelemetrySettings{
+		Logger:                logger,
+		TracerProvider:        tnoop.NewTracerProvider(),
+		MeterProvider:         mnoop.NewMeterProvider(),
+		MetricsLevel:          configtelemetry.LevelNone,
+		Resource:              pcommon.NewResource(),
+		ReportComponentStatus: nil,
+	}
+
 	f := otlphttpexporter.NewFactory()
 	c := f.CreateDefaultConfig()
 	cfg := c.(*otlphttpexporter.Config)
@@ -56,21 +67,24 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 	cfg.Headers = map[string]configopaque.String{
 		"X-SF-Token": configopaque.String(accessToken),
 	}
+
+	cfg.QueueSettings.Enabled = true
+	cfg.QueueSettings.QueueSize = 1000
+	cfg.QueueSettings.NumConsumers = 20
 	e, err := f.CreateMetricsExporter(context.Background(), exporter.CreateSettings{
-		ID: component.NewID("otlp"),
-		TelemetrySettings: component.TelemetrySettings{
-			Logger:                logger,
-			TracerProvider:        tnoop.NewTracerProvider(),
-			MeterProvider:         mnoop.NewMeterProvider(),
-			MetricsLevel:          configtelemetry.LevelNone,
-			Resource:              pcommon.NewResource(),
-			ReportComponentStatus: nil,
-		},
-		BuildInfo: component.BuildInfo{},
+		ID:                component.NewID("otlp"),
+		TelemetrySettings: telemetrySettings,
+		BuildInfo:         component.BuildInfo{},
 	}, cfg)
 	if err != nil {
 		return err
 	}
+	batchProcessorFactory := batchprocessor.NewFactory()
+	p, err := batchProcessorFactory.CreateMetricsProcessor(context.Background(), processor.CreateSettings{
+		ID:                component.NewID("batch"),
+		TelemetrySettings: telemetrySettings,
+		BuildInfo:         component.BuildInfo{},
+	}, batchProcessorFactory.CreateDefaultConfig(), e)
 
 	keepRunning := &atomic.Bool{}
 	keepRunning.Store(true)
@@ -78,14 +92,22 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 	signal.Notify(shutdownChan, os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
 	go func() {
 		<-shutdownChan
-		keepRunning.Store(false)
+		if swapped := keepRunning.CompareAndSwap(true, false); !swapped {
+			logger.Error("force exit")
+			os.Exit(1)
+		}
 	}()
 
 	err = e.Start(context.Background(), componenttest.NewNopHost())
 	if err != nil {
 		return err
 	}
+	err = p.Start(context.Background(), componenttest.NewNopHost())
+	if err != nil {
+		return err
+	}
 	defer func() {
+		_ = p.Shutdown(context.Background())
 		err := e.Shutdown(context.Background())
 		if err != nil {
 			logger.Error("error shutting down", zap.Error(err))
@@ -94,7 +116,7 @@ func run(otlpEndpoint string, accessToken string, prefix string) error {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	runExports(wg, prefix, e, keepRunning, logger)
+	runExports(wg, prefix, p, keepRunning, logger)
 	wg.Done()
 
 	wg.Wait()
@@ -146,7 +168,7 @@ var testCases = []testRun{
 			dp.SetCount(1)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			return metrics
 		},
@@ -196,7 +218,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(15.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			return metrics
 		},
@@ -214,7 +236,7 @@ var testCases = []testRun{
 			dp.SetSum(1)
 			dp.SetCount(2)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			return metrics
 		},
@@ -232,7 +254,7 @@ var testCases = []testRun{
 			dp.SetSum(1)
 			dp.SetCount(2)
 			dp.SetMin(2.0)
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			return metrics
 		},
@@ -251,7 +273,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(2.0)
 			dp.SetMax(3.0)
-			var buckets []uint64
+			buckets := []uint64{0}
 			var bounds []float64
 			for i := 0; i < 33; i++ {
 				buckets = append(buckets, uint64(i))
@@ -276,7 +298,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(2.0)
 			dp.SetMax(3.0)
-			var buckets []uint64
+			buckets := []uint64{0}
 			var bounds []float64
 			for i := 0; i < 64; i++ {
 				buckets = append(buckets, uint64(i))
@@ -302,7 +324,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			return metrics
 		},
@@ -322,7 +344,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 
 			return metrics
@@ -342,7 +364,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			for i := 0; i < 5000; i++ {
 				e := dp.Exemplars().AppendEmpty()
@@ -370,7 +392,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3, 4, 5, 6, 7)
+			dp.BucketCounts().Append(1, 2, 3, 4, 5, 6, 7, 8)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5, 5.6, 0.3, 0.1, 0.6)
 
 			return metrics
@@ -390,7 +412,7 @@ var testCases = []testRun{
 			dp.SetCount(2)
 			dp.SetMin(1.0)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3, 4, 5, 6, 7)
+			dp.BucketCounts().Append(1, 2, 3, 4, 5, 6, 7, 8)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5, 5.6, 0.3, 0.1, 0.6)
 
 			dp2 := h.DataPoints().AppendEmpty()
@@ -399,7 +421,7 @@ var testCases = []testRun{
 			dp2.SetCount(2)
 			dp2.SetMin(1.0)
 			dp2.SetMax(2.0)
-			dp2.BucketCounts().Append(1)
+			dp2.BucketCounts().Append(1, 2)
 			dp2.ExplicitBounds().Append(0.1)
 
 			dp3 := h.DataPoints().AppendEmpty()
@@ -408,7 +430,7 @@ var testCases = []testRun{
 			dp3.SetCount(2)
 			dp3.SetMin(1.0)
 			dp3.SetMax(2.0)
-			dp3.BucketCounts().Append(1, 0, 0, 10)
+			dp3.BucketCounts().Append(1, 0, 0, 10, 3)
 			dp3.ExplicitBounds().Append(0.1, 0.2, 0.3, 44.2)
 
 			return metrics
@@ -429,7 +451,7 @@ var testCases = []testRun{
 			dp.SetCount(1)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
 			return metrics
 		},
@@ -449,7 +471,7 @@ var testCases = []testRun{
 			dp.SetCount(1)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 1.7E+308)
 			return metrics
 		},
@@ -469,7 +491,7 @@ var testCases = []testRun{
 			dp.SetCount(1)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.BucketCounts().Append(1, 2, 3)
+			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(-0.5, -0.2, -0.1)
 			return metrics
 		},
@@ -489,7 +511,7 @@ var testCases = []testRun{
 			dp.SetCount(1)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.BucketCounts().Append(0, 0, 0)
+			dp.BucketCounts().Append(0, 0, 0, 0)
 			dp.ExplicitBounds().Append(0, 0, 0)
 			return metrics
 		},
