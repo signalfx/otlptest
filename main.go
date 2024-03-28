@@ -129,6 +129,28 @@ type testRun struct {
 	createMetrics func(prefix string) pmetric.Metrics
 }
 
+// Metric names generated -
+// <prefix>.histogram.empty
+// <prefix>.gauge.check
+// <prefix>.histogram.complete
+// <prefix>.histogram.dp.empty
+// <prefix>.histogram.nobuckets
+// <prefix>.histogram.minovermax
+// <prefix>.histogram.nomin
+// <prefix>.histogram.nomax
+// <prefix>.histogram.33buckets
+// <prefix>.histogram.startolderthanend
+// <prefix>.histogram.longattributename
+// <prefix>.histogram.5000exemplars
+// <prefix>.histogram.unorderedbounds
+// <prefix>.histogram.repeatingbounds
+// <prefix>.histogram.variablebuckets
+// <prefix>.histogram.negativesum
+// <prefix>.histogram.negativevalues
+// <prefix>.histogram.maxboundary64bitvalue
+// <prefix>.histogram.allbucketstozero
+// <prefix>.histogram.noexplicitbounds
+
 var testCases = []testRun{
 	{
 		name: "empty histogram",
@@ -164,8 +186,8 @@ var testCases = []testRun{
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetMax(1)
 			dp.SetMin(0)
-			dp.SetSum(1)
-			dp.SetCount(1)
+			dp.SetSum(2)
+			dp.SetCount(6)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.BucketCounts().Append(1, 2, 3, 0)
@@ -187,13 +209,13 @@ var testCases = []testRun{
 		},
 	},
 	{
-		name: "histogram with no buckets",
+		name: "histogram with no bucket counts",
 		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
 			metric.SetName(fmt.Sprintf("%s.histogram.nobuckets", prefix))
-			metric.SetDescription("Send histogram with no buckets")
+			metric.SetDescription("Send histogram with no bucket counts")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetSum(1)
@@ -214,8 +236,8 @@ var testCases = []testRun{
 			metric.SetDescription("Send histogram with min larger than max")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
+			dp.SetSum(2)
+			dp.SetCount(6)
 			dp.SetMin(15.0)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3, 0)
@@ -233,8 +255,8 @@ var testCases = []testRun{
 			metric.SetDescription("Histogram with no minimum set")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
+			dp.SetSum(2)
+			dp.SetCount(6)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
@@ -251,8 +273,8 @@ var testCases = []testRun{
 			metric.SetDescription("Histogram with no maximum set")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
+			dp.SetSum(2)
+			dp.SetCount(6)
 			dp.SetMin(2.0)
 			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
@@ -270,40 +292,17 @@ var testCases = []testRun{
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetSum(1)
-			dp.SetCount(2)
 			dp.SetMin(2.0)
 			dp.SetMax(3.0)
+			count := 0
 			buckets := []uint64{0}
 			var bounds []float64
 			for i := 0; i < 33; i++ {
+				count += i
 				buckets = append(buckets, uint64(i))
 				bounds = append(bounds, float64(i)/100)
 			}
-			dp.BucketCounts().Append(buckets...)
-			dp.ExplicitBounds().Append(bounds...)
-			return metrics
-		},
-	},
-	{
-		name: "64 buckets",
-		createMetrics: func(prefix string) pmetric.Metrics {
-			metrics := pmetric.NewMetrics()
-			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-			h := metric.SetEmptyHistogram()
-			metric.SetName(fmt.Sprintf("%s.histogram.64buckets", prefix))
-			metric.SetDescription("Send a histogram with 64 buckets")
-			dp := h.DataPoints().AppendEmpty()
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(2.0)
-			dp.SetMax(3.0)
-			buckets := []uint64{0}
-			var bounds []float64
-			for i := 0; i < 64; i++ {
-				buckets = append(buckets, uint64(i))
-				bounds = append(bounds, float64(i)/100)
-			}
+			dp.SetCount(uint64(count))
 			dp.BucketCounts().Append(buckets...)
 			dp.ExplicitBounds().Append(bounds...)
 			return metrics
@@ -320,9 +319,9 @@ var testCases = []testRun{
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now().Add(10 * time.Minute)))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
+			dp.SetSum(2)
+			dp.SetCount(6)
+			dp.SetMin(0.1)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
@@ -340,9 +339,9 @@ var testCases = []testRun{
 			dp := h.DataPoints().AppendEmpty()
 			dp.Attributes().PutStr("Lorem_ipsum_dolor_sit_amet,_consectetur_adipiscing_elit,_sed_do_eiusmod_tempor_incididunt_ut_labore_et_dolore_magna_aliqua._Ut_enim_ad_minim_veniam,_quis_nostrud_exercitation_ullamco_laboris_nisi_ut_aliquip_ex_ea_commodo_consequat._Duis_aute_irure_dolor_in_reprehenderit_in_voluptate_velit_esse_cillum_dolore_eu_fugiat_nulla_pariatur._Excepteur_sint_occaecat_cupidatat_non_proident,_sunt_in_culpa_qui_officia_deserunt_mollit_anim_id_est laborum.", "foo")
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
+			dp.SetSum(2)
+			dp.SetCount(6)
+			dp.SetMin(0.1)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
@@ -360,9 +359,9 @@ var testCases = []testRun{
 			metric.SetDescription("histogram with 5000 exemplars")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
+			dp.SetSum(2)
+			dp.SetCount(6)
+			dp.SetMin(0.1)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(1, 2, 3, 0)
 			dp.ExplicitBounds().Append(0.1, 0.2, 0.5)
@@ -388,12 +387,32 @@ var testCases = []testRun{
 			metric.SetDescription("histogram with unordered bounds")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
+			dp.SetSum(2)
+			dp.SetCount(5)
+			dp.SetMin(0.1)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3, 4, 5, 6, 7, 8)
-			dp.ExplicitBounds().Append(0.1, 0.2, 0.5, 5.6, 0.3, 0.1, 0.6)
+			dp.BucketCounts().Append(1, 1, 1, 1, 1)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5, 0.3)
+
+			return metrics
+		},
+	},
+	{
+		name: "histogram with a repeating boundary",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.repeatingbounds", prefix))
+			metric.SetDescription("histogram with a repeating boundary")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(2)
+			dp.SetCount(5)
+			dp.SetMin(0.1)
+			dp.SetMax(2.0)
+			dp.BucketCounts().Append(1, 1, 1, 1, 1)
+			dp.ExplicitBounds().Append(0.1, 0.2, 0.5, 0.1)
 
 			return metrics
 		},
@@ -409,30 +428,50 @@ var testCases = []testRun{
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetSum(1)
-			dp.SetCount(2)
-			dp.SetMin(1.0)
+			dp.SetCount(6)
+			dp.SetMin(0.1)
 			dp.SetMax(2.0)
-			dp.BucketCounts().Append(1, 2, 3, 4, 5, 6, 7, 8)
-			dp.ExplicitBounds().Append(0.1, 0.2, 0.5, 5.6, 0.3, 0.1, 0.6)
+			dp.BucketCounts().Append(1, 2, 3)
+			dp.ExplicitBounds().Append(0.1, 0.2)
 
 			dp2 := h.DataPoints().AppendEmpty()
 			dp2.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp2.SetSum(1)
-			dp2.SetCount(2)
-			dp2.SetMin(1.0)
+			dp2.SetCount(3)
+			dp2.SetMin(0.1)
 			dp2.SetMax(2.0)
 			dp2.BucketCounts().Append(1, 2)
 			dp2.ExplicitBounds().Append(0.1)
 
 			dp3 := h.DataPoints().AppendEmpty()
 			dp3.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp3.SetSum(1)
-			dp3.SetCount(2)
-			dp3.SetMin(1.0)
-			dp3.SetMax(2.0)
+			dp3.SetSum(150)
+			dp3.SetCount(14)
+			dp3.SetMin(0.1)
+			dp3.SetMax(46)
 			dp3.BucketCounts().Append(1, 0, 0, 10, 3)
 			dp3.ExplicitBounds().Append(0.1, 0.2, 0.3, 44.2)
 
+			return metrics
+		},
+	},
+	{
+		name: "negative observations",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			metric.SetName(fmt.Sprintf("%s.histogram.negativevalues", prefix))
+			metric.SetDescription("Send a histogram with negative observation values")
+			h := metric.SetEmptyHistogram()
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetMax(-6)
+			dp.SetMin(-11)
+			dp.SetSum(-16)
+			dp.SetCount(3)
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.BucketCounts().Append(1, 1, 0, 1, 0)
+			dp.ExplicitBounds().Append(-10, -5, 0, 5)
 			return metrics
 		},
 	},
@@ -448,7 +487,7 @@ var testCases = []testRun{
 			dp.SetMax(1)
 			dp.SetMin(0)
 			dp.SetSum(-36.42)
-			dp.SetCount(1)
+			dp.SetCount(6)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.BucketCounts().Append(1, 2, 3, 0)
@@ -465,34 +504,14 @@ var testCases = []testRun{
 			metric.SetDescription("Send a histogram with buckets with high (64 bit boundary) bound values")
 			h := metric.SetEmptyHistogram()
 			dp := h.DataPoints().AppendEmpty()
-			dp.SetMax(1)
+			dp.SetMax(1.7e+308)
 			dp.SetMin(0)
-			dp.SetSum(2)
-			dp.SetCount(1)
+			dp.SetSum(1.7e+308)
+			dp.SetCount(3)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.BucketCounts().Append(1, 2, 3, 0)
-			dp.ExplicitBounds().Append(0.1, 0.2, 1.7E+308)
-			return metrics
-		},
-	},
-	{
-		name: "negative bounds",
-		createMetrics: func(prefix string) pmetric.Metrics {
-			metrics := pmetric.NewMetrics()
-			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-			metric.SetName(fmt.Sprintf("%s.histogram.negativebounds", prefix))
-			metric.SetDescription("Send a histogram with buckets with negative bound values")
-			h := metric.SetEmptyHistogram()
-			dp := h.DataPoints().AppendEmpty()
-			dp.SetMax(1)
-			dp.SetMin(0)
-			dp.SetSum(2)
-			dp.SetCount(1)
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.BucketCounts().Append(1, 2, 3, 0)
-			dp.ExplicitBounds().Append(-0.5, -0.2, -0.1)
+			dp.BucketCounts().Append(1, 1, 1, 0)
+			dp.ExplicitBounds().Append(0.1, 0.2, 1.7e+308)
 			return metrics
 		},
 	},
@@ -505,10 +524,10 @@ var testCases = []testRun{
 			metric.SetDescription("Send a histogram with bucket counts and values set to 0")
 			h := metric.SetEmptyHistogram()
 			dp := h.DataPoints().AppendEmpty()
-			dp.SetMax(1)
+			dp.SetMax(0)
 			dp.SetMin(0)
-			dp.SetSum(2)
-			dp.SetCount(1)
+			dp.SetSum(0)
+			dp.SetCount(0)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.BucketCounts().Append(0, 0, 0, 0)
@@ -528,7 +547,7 @@ var testCases = []testRun{
 			dp.SetMax(1)
 			dp.SetMin(0)
 			dp.SetSum(2)
-			dp.SetCount(1)
+			dp.SetCount(6)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.BucketCounts().Append(1, 2, 3)
@@ -551,7 +570,7 @@ var modifiers = []testRunModifier{
 			}
 			return []testRun{
 				{
-					name: run.name + " with unspecified type",
+					name: run.name + " with unspecified type (default is cumulative)",
 					createMetrics: func(prefix string) pmetric.Metrics {
 						metrics := run.createMetrics(prefix)
 						histogram := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Histogram()
@@ -583,40 +602,6 @@ var modifiers = []testRunModifier{
 						histogram.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 						return metrics
 					},
-				},
-			}, true
-		},
-	},
-	{
-		name: "with and without exemplars",
-		createTestRuns: func(prefix string, run testRun) ([]testRun, bool) {
-			metric := run.createMetrics(prefix).ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
-			if metric.Type() != pmetric.MetricTypeHistogram || metric.Histogram().DataPoints().Len() == 0 {
-				return nil, false
-			}
-			return []testRun{
-				{
-					name: run.name + " with exemplar",
-					createMetrics: func(prefix string) pmetric.Metrics {
-						metrics := run.createMetrics(prefix)
-						metric := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
-						metric.SetName(metric.Name() + ".exemplar")
-						metric.SetDescription(metric.Description() + " - with exemplar")
-
-						histogram := metric.Histogram()
-						dp := histogram.DataPoints().At(0)
-						e := dp.Exemplars().AppendEmpty()
-						e.SetTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
-						e.SetSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
-						e.SetDoubleValue(42.0)
-						e.SetIntValue(42)
-						e.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-						return metrics
-					},
-				},
-				{
-					name:          run.name + " without exemplar",
-					createMetrics: run.createMetrics,
 				},
 			}, true
 		},
