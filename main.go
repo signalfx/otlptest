@@ -640,7 +640,7 @@ var testCases = []testRun{
 			dp.SetCount(math.MaxUint64)
 			dp.SetMin(math.MaxFloat64)
 			dp.SetMax(math.MaxFloat64)
-			dp.BucketCounts().Append(0, math.MaxUint64)
+			dp.BucketCounts().Append(0, 0, 0, math.MaxUint64)
 			dp.ExplicitBounds().Append(0, 0.1, math.MaxFloat64)
 
 			return metrics
