@@ -554,6 +554,72 @@ var testCases = []testRun{
 			return metrics
 		},
 	},
+	{
+		name: "histogram with 1000 bucket bounds",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.1000buckets", prefix))
+			metric.SetDescription("histogram with 1000 bucket boundaries")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(2)
+			dp.SetCount(1000)
+			dp.SetMin(0.1)
+			dp.SetMax(2.0)
+			bucketCounts := make([]uint64, 1000)
+			explicitBounds := make([]float64, 1000)
+			for i := 0; i < 1000; i++ {
+				bucketCounts[i] = uint64(i)
+				explicitBounds[i] = float64(i) * 0.1
+			}
+			dp.BucketCounts().Append(bucketCounts...)
+			dp.ExplicitBounds().Append(explicitBounds...)
+
+			return metrics
+		},
+	},
+	{
+		name: "histogram with repeating bucket bounds",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.repeatingbounds", prefix))
+			metric.SetDescription("histogram with repeating bucket boundaries")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(0.9)
+			dp.SetCount(7)
+			dp.SetMin(0.1)
+			dp.SetMax(2.0)
+			dp.BucketCounts().Append(0, 1, 1, 2, 3)
+			dp.ExplicitBounds().Append(0, 0.1, 0.1, 0.2)
+
+			return metrics
+		},
+	},
+	{
+		name: "histogram with NaN count",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.nancount", prefix))
+			metric.SetDescription("histogram where count is NaN")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(0.9)
+			dp.SetCount(0 / 1)
+			dp.SetMin(0.1)
+			dp.SetMax(2.0)
+			dp.BucketCounts().Append(0, 1)
+			dp.ExplicitBounds().Append(0, 0.1, 0.1)
+
+			return metrics
+		},
+	},
 }
 
 type testRunModifier struct {
