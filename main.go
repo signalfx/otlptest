@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -601,17 +602,17 @@ var testCases = []testRun{
 		},
 	},
 	{
-		name: "histogram with NaN count",
+		name: "histogram with NaN sum",
 		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
-			metric.SetName(fmt.Sprintf("%s.histogram.nancount", prefix))
-			metric.SetDescription("histogram where count is NaN")
+			metric.SetName(fmt.Sprintf("%s.histogram.nansum", prefix))
+			metric.SetDescription("histogram where sum is NaN")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(0.9)
-			dp.SetCount(1 / 0)
+			dp.SetSum(math.Inf(0))
+			dp.SetCount(1)
 			dp.SetMin(0.1)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(0, 1)
