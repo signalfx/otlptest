@@ -398,13 +398,13 @@ var testCases = []testRun{
 		},
 	},
 	{
-		name: "histogram with a repeating boundary",
+		name: "histogram with an overlapping boundary",
 		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
-			metric.SetName(fmt.Sprintf("%s.histogram.repeatingbounds", prefix))
-			metric.SetDescription("histogram with a repeating boundary")
+			metric.SetName(fmt.Sprintf("%s.histogram.overlapping", prefix))
+			metric.SetDescription("histogram with a overlapping boundary")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetSum(2)
@@ -611,7 +611,7 @@ var testCases = []testRun{
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetSum(0.9)
-			dp.SetCount(0 / 1)
+			dp.SetCount(1 / 0)
 			dp.SetMin(0.1)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(0, 1)
