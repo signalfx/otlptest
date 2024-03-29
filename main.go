@@ -154,6 +154,7 @@ type testRun struct {
 // <prefix>.histogram.1000buckets
 // <prefix>.histogram.repeatingbounds
 // <prefix>.histogram.nansum
+// <prefix>.histogram.maxvalues
 
 var testCases = []testRun{
 	{
@@ -620,6 +621,26 @@ var testCases = []testRun{
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(0, 1)
 			dp.ExplicitBounds().Append(0, 0.1, 0.1)
+
+			return metrics
+		},
+	},
+	{
+		name: "histogram with max values data",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.maxvalues", prefix))
+			metric.SetDescription("histogram where all values are set to maximum")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(math.MaxFloat64)
+			dp.SetCount(math.MaxUint64)
+			dp.SetMin(math.MaxFloat64)
+			dp.SetMax(math.MaxFloat64)
+			dp.BucketCounts().Append(0, math.MaxUint64)
+			dp.ExplicitBounds().Append(0, 0.1, math.MaxFloat64)
 
 			return metrics
 		},
