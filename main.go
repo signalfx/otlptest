@@ -144,13 +144,16 @@ type testRun struct {
 // <prefix>.histogram.longattributename
 // <prefix>.histogram.5000exemplars
 // <prefix>.histogram.unorderedbounds
-// <prefix>.histogram.repeatingbounds
+// <prefix>.histogram.overlappingbounds
 // <prefix>.histogram.variablebuckets
 // <prefix>.histogram.negativesum
 // <prefix>.histogram.negativevalues
 // <prefix>.histogram.maxboundary64bitvalue
 // <prefix>.histogram.allbucketstozero
 // <prefix>.histogram.noexplicitbounds
+// <prefix>.histogram.1000buckets
+// <prefix>.histogram.repeatingbounds
+// <prefix>.histogram.nansum
 
 var testCases = []testRun{
 	{
