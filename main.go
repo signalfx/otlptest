@@ -616,7 +616,7 @@ var testCases = []testRun{
 			metric.SetDescription("histogram where sum is NaN")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-			dp.SetSum(math.Inf(0))
+			dp.SetSum(math.Inf(0) - math.Inf(0))
 			dp.SetCount(1)
 			dp.SetMin(0.1)
 			dp.SetMax(2.0)
