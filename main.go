@@ -404,7 +404,7 @@ var testCases = []testRun{
 		},
 	},
 	{
-		name: "histogram with an overlapping boundary",
+		name: "histogram with non-increasing boundaries",
 		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
