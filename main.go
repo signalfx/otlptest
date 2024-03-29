@@ -621,7 +621,7 @@ var testCases = []testRun{
 			dp.SetMin(0.1)
 			dp.SetMax(2.0)
 			dp.BucketCounts().Append(0, 1)
-			dp.ExplicitBounds().Append(0, 0.1, 0.1)
+			dp.ExplicitBounds().Append(0)
 
 			return metrics
 		},
