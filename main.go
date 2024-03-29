@@ -155,6 +155,7 @@ type testRun struct {
 // <prefix>.histogram.repeatingbounds
 // <prefix>.histogram.nansum
 // <prefix>.histogram.maxvalues
+// <prefix>.histogram.singlebound
 
 var testCases = []testRun{
 	{
@@ -642,6 +643,26 @@ var testCases = []testRun{
 			dp.BucketCounts().Append(0, math.MaxUint64)
 			dp.ExplicitBounds().Append(0, 0.1, math.MaxFloat64)
 
+			return metrics
+		},
+	},
+	{
+		name: "single boundary histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			metric.SetName(fmt.Sprintf("%s.histogram.singlebound", prefix))
+			metric.SetDescription("Send a single boundary histogram")
+			h := metric.SetEmptyHistogram()
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetMax(1)
+			dp.SetMin(0)
+			dp.SetSum(2)
+			dp.SetCount(3)
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.BucketCounts().Append(1, 2)
+			dp.ExplicitBounds().Append(0.1)
 			return metrics
 		},
 	},
