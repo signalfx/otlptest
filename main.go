@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -143,13 +144,18 @@ type testRun struct {
 // <prefix>.histogram.longattributename
 // <prefix>.histogram.5000exemplars
 // <prefix>.histogram.unorderedbounds
-// <prefix>.histogram.repeatingbounds
+// <prefix>.histogram.overlappingbounds
 // <prefix>.histogram.variablebuckets
 // <prefix>.histogram.negativesum
 // <prefix>.histogram.negativevalues
 // <prefix>.histogram.maxboundary64bitvalue
 // <prefix>.histogram.allbucketstozero
 // <prefix>.histogram.noexplicitbounds
+// <prefix>.histogram.1000buckets
+// <prefix>.histogram.repeatingbounds
+// <prefix>.histogram.nansum
+// <prefix>.histogram.maxvalues
+// <prefix>.histogram.singlebound
 
 var testCases = []testRun{
 	{
@@ -398,13 +404,13 @@ var testCases = []testRun{
 		},
 	},
 	{
-		name: "histogram with a repeating boundary",
+		name: "histogram with non-increasing boundaries",
 		createMetrics: func(prefix string) pmetric.Metrics {
 			metrics := pmetric.NewMetrics()
 			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 			h := metric.SetEmptyHistogram()
-			metric.SetName(fmt.Sprintf("%s.histogram.repeatingbounds", prefix))
-			metric.SetDescription("histogram with a repeating boundary")
+			metric.SetName(fmt.Sprintf("%s.histogram.nonincreasing", prefix))
+			metric.SetDescription("histogram with a non-increasing boundary")
 			dp := h.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetSum(2)
@@ -551,6 +557,112 @@ var testCases = []testRun{
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 			dp.BucketCounts().Append(1, 2, 3)
+			return metrics
+		},
+	},
+	{
+		name: "histogram with 1000 bucket bounds",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.1000buckets", prefix))
+			metric.SetDescription("histogram with 1000 bucket boundaries")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(2)
+			dp.SetCount(1000)
+			dp.SetMin(0.1)
+			dp.SetMax(2.0)
+			bucketCounts := make([]uint64, 1000)
+			explicitBounds := make([]float64, 1000)
+			for i := 0; i < 1000; i++ {
+				bucketCounts[i] = uint64(i)
+				explicitBounds[i] = float64(i) * 0.1
+			}
+			dp.BucketCounts().Append(bucketCounts...)
+			dp.ExplicitBounds().Append(explicitBounds...)
+
+			return metrics
+		},
+	},
+	{
+		name: "histogram with repeating bucket bounds",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.repeatingbounds", prefix))
+			metric.SetDescription("histogram with repeating bucket boundaries")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(0.9)
+			dp.SetCount(7)
+			dp.SetMin(0.1)
+			dp.SetMax(2.0)
+			dp.BucketCounts().Append(0, 1, 1, 2, 3)
+			dp.ExplicitBounds().Append(0, 0.1, 0.1, 0.2)
+
+			return metrics
+		},
+	},
+	{
+		name: "histogram with NaN sum",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.nansum", prefix))
+			metric.SetDescription("histogram where sum is NaN")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(math.Inf(0) - math.Inf(0))
+			dp.SetCount(1)
+			dp.SetMin(0.1)
+			dp.SetMax(2.0)
+			dp.BucketCounts().Append(0, 1)
+			dp.ExplicitBounds().Append(0)
+
+			return metrics
+		},
+	},
+	{
+		name: "histogram with max values data",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			h := metric.SetEmptyHistogram()
+			metric.SetName(fmt.Sprintf("%s.histogram.maxvalues", prefix))
+			metric.SetDescription("histogram where all values are set to maximum")
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetSum(math.MaxFloat64)
+			dp.SetCount(math.MaxUint64)
+			dp.SetMin(math.MaxFloat64)
+			dp.SetMax(math.MaxFloat64)
+			dp.BucketCounts().Append(0, 0, 0, math.MaxUint64)
+			dp.ExplicitBounds().Append(0, 0.1, math.MaxFloat64)
+
+			return metrics
+		},
+	},
+	{
+		name: "single boundary histogram",
+		createMetrics: func(prefix string) pmetric.Metrics {
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			metric.SetName(fmt.Sprintf("%s.histogram.singlebound", prefix))
+			metric.SetDescription("Send a single boundary histogram")
+			h := metric.SetEmptyHistogram()
+			dp := h.DataPoints().AppendEmpty()
+			dp.SetMax(1)
+			dp.SetMin(0)
+			dp.SetSum(2)
+			dp.SetCount(3)
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			dp.BucketCounts().Append(1, 2)
+			dp.ExplicitBounds().Append(0.1)
 			return metrics
 		},
 	},
