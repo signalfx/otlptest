@@ -715,6 +715,42 @@ var modifiers = []testRunModifier{
 						return metrics
 					},
 				},
+				{
+					name: run.name + " with empty metric name",
+					createMetrics: func(prefix string) pmetric.Metrics {
+						metrics := pmetric.NewMetrics()
+						metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+						metric.SetName("")
+						metric.SetDescription("Send a gauge with no metric name")
+						g := metric.SetEmptyGauge()
+						g.DataPoints().AppendEmpty().SetIntValue(1)
+						return metrics
+					},
+				},
+				{
+					name: run.name + " with metric name made only of spaces",
+					createMetrics: func(prefix string) pmetric.Metrics {
+						metrics := pmetric.NewMetrics()
+						metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+						metric.SetName("   ")
+						metric.SetDescription("Send a gauge with name made only of spaces")
+						g := metric.SetEmptyGauge()
+						g.DataPoints().AppendEmpty().SetIntValue(1)
+						return metrics
+					},
+				},
+				{
+					name: run.name + " with metric 🤡 name",
+					createMetrics: func(prefix string) pmetric.Metrics {
+						metrics := pmetric.NewMetrics()
+						metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+						metric.SetName("🤡🤡🤡🤡🤡🤡🤡")
+						metric.SetDescription("Send a gauge with 🤡 name")
+						g := metric.SetEmptyGauge()
+						g.DataPoints().AppendEmpty().SetIntValue(1)
+						return metrics
+					},
+				},
 			}, true
 		},
 	},
